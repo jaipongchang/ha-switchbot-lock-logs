@@ -23,3 +23,15 @@ keep-runtime-typing = true
 
 [lint.mccabe]
 max-complexity = 25
+
+[lint.per-file-ignores]
+# Test files: assertions are the point; docstrings/annotations add no value there.
+"tests/*" = [
+    "S101",    # assert usage is intentional in tests
+    "ANN",     # type annotations on test helpers are noise
+    "D",       # docstrings on test functions are noise
+    "PLR2004", # magic values are expected literals in tests
+    "INP001",  # tests dir is an implicit namespace package by design
+    "PT018",   # compound assertions read fine in tests
+    "ARG",     # stub shims must accept unused protocol args
+]

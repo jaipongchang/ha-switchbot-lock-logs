@@ -18,22 +18,29 @@ ULTRA_ACTION_MAP: Final[dict[int, str]] = {
 ULTRA_SOURCE_MAP: Final[dict[int, str]] = {}
 
 _CLASSIC_CACHE: dict[str, dict[int, str]] = {}
+_MIN_PAYLOAD_LEN: Final = 6
+
 
 def _classic_enums(domain: str) -> dict[int, str]:
+    """Map classic-model enum values to lowercase names (lazy optional import)."""
     if domain not in _CLASSIC_CACHE:
         try:
             if domain == "action":
-                from switchbot.const import LockLogAction as enum
+                # lazy optional pySwitchbot import
+                from switchbot.const import LockLogAction as ActionEnum  # noqa: PLC0415
             else:
-                from switchbot.const import LockLogSource as enum
-            _CLASSIC_CACHE[domain] = {int(e.value): e.name.lower() for e in enum}
-        except Exception:
+                # lazy optional pySwitchbot import
+                from switchbot.const import LockLogSource as SourceEnum  # noqa: PLC0415
+            chosen = ActionEnum if domain == "action" else SourceEnum
+            _CLASSIC_CACHE[domain] = {int(e.value): e.name.lower() for e in chosen}
+        except Exception:  # noqa: BLE001  (pySwitchbot may lack these enums entirely)
             _CLASSIC_CACHE[domain] = {}
     return _CLASSIC_CACHE[domain]
 
+
 def extract_user_id(payload: str) -> int | None:
     """User id at payload byte 2; method byte 1 (01/03/06); byte 0 varies on Ultra."""
-    if not payload or len(payload) < 6:
+    if not payload or len(payload) < _MIN_PAYLOAD_LEN:
         return None
     try:
         if payload[0:2] == "59" and payload[2:4] in ("01", "03"):
@@ -46,15 +53,20 @@ def extract_user_id(payload: str) -> int | None:
         pass
     return None
 
+
 def decode_action(model: str, code: int) -> str:
+    """Return a stable event name for an action code, per model family."""
     if model == MODEL_ULTRA:
         return ULTRA_ACTION_MAP.get(code, f"unknown_{code}")
     return _classic_enums("action").get(code, f"unknown_{code}")
 
+
 def decode_source(model: str, code: int) -> str:
+    """Return a stable source name for a source code, per model family."""
     if model == MODEL_ULTRA:
         return ULTRA_SOURCE_MAP.get(code, f"unknown_{code}")
     return _classic_enums("source").get(code, f"unknown_{code}")
+
 
 def enrich_log(
     log: dict[str, Any], *, model: str, users: dict[str, str], clock_offset: int | None
@@ -79,6 +91,14 @@ def enrich_log(
         "payload": log.get("payload", ""),
     }
 
+
 EVENT_TYPES: Final[list[str]] = sorted(
-    {"auto_lock", "lock", "unlock", "failed_attempt", "unknown"} | set(ULTRA_ACTION_MAP.values())
+    {
+        "auto_lock",
+        "lock",
+        "unlock",
+        "failed_attempt",
+        "unknown",
+    }
+    | set(ULTRA_ACTION_MAP.values())
 )

@@ -10,14 +10,17 @@ MAX_SAMPLES: Final = 5
 MIN_VALID: Final = 0
 MAX_VALID: Final = 3600
 
+
 class ClockOffsetTracker:
     """Median drift of a lock's RTC vs real time, from push-triggered fetches."""
 
     def __init__(self, samples: list[int] | None = None) -> None:
+        """Seed the ring with previously learned samples, if any."""
         self._samples: deque[int] = deque(samples or [], maxlen=MAX_SAMPLES)
 
     @property
     def samples(self) -> list[int]:
+        """Return a copy of the retained samples, oldest first."""
         return list(self._samples)
 
     def add_sample(self, fetch_time: float, newest_log_ts: float) -> bool:
@@ -29,4 +32,5 @@ class ClockOffsetTracker:
         return True
 
     def offset(self) -> int | None:
+        """Return the median learned offset, or None before calibration."""
         return int(median(self._samples)) if self._samples else None

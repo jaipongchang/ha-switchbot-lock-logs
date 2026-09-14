@@ -1,4 +1,5 @@
-"""Stub homeassistant (any submodule) so the package __init__ imports without a HA install."""
+"""Stub homeassistant (any submodule) so the package __init__ imports."""
+
 import importlib.abc
 import sys
 import types

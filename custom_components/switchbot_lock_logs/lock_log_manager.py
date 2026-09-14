@@ -3,12 +3,10 @@
 from __future__ import annotations
 
 import time
-from collections.abc import Callable
 from enum import Enum
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from homeassistant.core import HomeAssistant, callback
-from switchbot import SwitchbotLock
 
 try:
     from switchbot.const import LockLogAction, LockLogSource
@@ -34,10 +32,17 @@ except ImportError:
         UNLOCK_FAILED = 3
         LOCK_FAILED = 4
 
+
 from .const import EVENT_LOCK_LOG_ENTRY, LOGGER
-from .history import CalibrationStore, HistoryStore
 from .models import enrich_log
-from .storage import SwitchBotLockUserStore
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from switchbot import SwitchbotLock
+
+    from .history import CalibrationStore, HistoryStore
+    from .storage import SwitchBotLockUserStore
 
 COMMAND_LOCK_LOG_BASE_TIME = "57001401"
 COMMAND_READ_LOCK_LOG = "57001405"
@@ -55,13 +60,10 @@ async def _compat_get_logs(
 
     result = await lock_device._send_command(base_cmd)
 
-    if (
-        not result
-        or not lock_device._check_command_result(
-            result,
-            0,
-            COMMAND_RESULT_EXPECTED_VALUES,
-        )
+    if not result or not lock_device._check_command_result(
+        result,
+        0,
+        COMMAND_RESULT_EXPECTED_VALUES,
     ):
         LOGGER.warning("Failed to set lock log base time")
         return None
@@ -71,13 +73,10 @@ async def _compat_get_logs(
     for index in range(max_entries):
         result = await lock_device._send_command(COMMAND_READ_LOCK_LOG)
 
-        if (
-            not result
-            or not lock_device._check_command_result(
-                result,
-                0,
-                COMMAND_RESULT_EXPECTED_VALUES,
-            )
+        if not result or not lock_device._check_command_result(
+            result,
+            0,
+            COMMAND_RESULT_EXPECTED_VALUES,
         ):
             LOGGER.debug("Failed to read lock log entry %d", index)
             break
@@ -88,7 +87,7 @@ async def _compat_get_logs(
             break
         if not any(byte != 0 for byte in data):
             break
-        if len(data) < 8:
+        if len(data) < 8:  # noqa: PLR2004  (fixed BLE protocol record length)
             LOGGER.warning("Lock log entry too short: %s", data.hex())
             continue
 
@@ -99,7 +98,7 @@ async def _compat_get_logs(
                 "source": data[5],
                 "action": data[6],
                 "value": data[7],
-                "payload": data[8:].hex() if len(data) > 8 else "",
+                "payload": data[8:].hex() if len(data) > 8 else "",  # noqa: PLR2004  (fixed BLE protocol record length)
             }
         )
 
@@ -182,10 +181,8 @@ class SwitchBotLockLogManager:
             if callable(native_get_logs):
                 logs = await native_get_logs(base_time, max_entries)
             else:
-                logs = await _compat_get_logs(
-                    self._lock_device, base_time, max_entries
-                )
-        except Exception as err:
+                logs = await _compat_get_logs(self._lock_device, base_time, max_entries)
+        except Exception as err:  # noqa: BLE001  (BLE backends raise arbitrary errors; degrade to cached logs)
             LOGGER.warning(
                 "Failed to fetch logs for %s: %s. Returning cached logs.",
                 self._mac,
@@ -204,9 +201,7 @@ class SwitchBotLockLogManager:
         if (
             trigger == "state_change"
             and enriched_logs
-            and self._tracker.add_sample(
-                time.time(), enriched_logs[0]["raw_timestamp"]
-            )
+            and self._tracker.add_sample(time.time(), enriched_logs[0]["raw_timestamp"])
         ):
             await self._calibration_store.async_set_tracker(self._mac, self._tracker)
 
