@@ -3,14 +3,105 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from enum import Enum
 from typing import Any
 
 from homeassistant.core import HomeAssistant, callback
 from switchbot import SwitchbotLock
-from switchbot.const import LockLogAction, LockLogSource
+
+try:
+    from switchbot.const import LockLogAction, LockLogSource
+except ImportError:
+
+    class LockLogSource(Enum):
+        """Compatibility fallback for pySwitchbot versions without LockLogSource."""
+
+        APP = 0
+        KEYPAD = 1
+        MANUAL = 2
+        AUTO_LOCK = 3
+        NFC = 4
+        REMOTE = 5
+        FINGERPRINT = 6
+
+    class LockLogAction(Enum):
+        """Compatibility fallback for pySwitchbot versions without LockLogAction."""
+
+        LOCKED = 0
+        UNLOCKED = 1
+        JAMMED = 2
+        UNLOCK_FAILED = 3
+        LOCK_FAILED = 4
 
 from .const import LOGGER
 from .storage import SwitchBotLockUserStore
+
+
+COMMAND_LOCK_LOG_BASE_TIME = "57001401"
+COMMAND_READ_LOCK_LOG = "57001405"
+COMMAND_RESULT_EXPECTED_VALUES = {1, 6}
+
+
+async def _compat_get_logs(
+    lock_device: SwitchbotLock,
+    base_time: int = 0,
+    max_entries: int = 20,
+) -> list[dict[str, Any]] | None:
+    """Read lock logs on pySwitchbot versions without get_logs()."""
+    timestamp_bytes = base_time.to_bytes(4, "big").hex()
+    base_cmd = COMMAND_LOCK_LOG_BASE_TIME + timestamp_bytes
+
+    result = await lock_device._send_command(base_cmd)
+
+    if (
+        not result
+        or not lock_device._check_command_result(
+            result,
+            0,
+            COMMAND_RESULT_EXPECTED_VALUES,
+        )
+    ):
+        LOGGER.warning("Failed to set lock log base time")
+        return None
+
+    logs: list[dict[str, Any]] = []
+
+    for index in range(max_entries):
+        result = await lock_device._send_command(COMMAND_READ_LOCK_LOG)
+
+        if (
+            not result
+            or not lock_device._check_command_result(
+                result,
+                0,
+                COMMAND_RESULT_EXPECTED_VALUES,
+            )
+        ):
+            LOGGER.debug("Failed to read lock log entry %d", index)
+            break
+
+        data = result[1:]
+
+        if not data:
+            break
+        if not any(byte != 0 for byte in data):
+            break
+        if len(data) < 8:
+            LOGGER.warning("Lock log entry too short: %s", data.hex())
+            continue
+
+        logs.append(
+            {
+                "timestamp": int.from_bytes(data[0:4], "big"),
+                "index": data[4],
+                "source": data[5],
+                "action": data[6],
+                "value": data[7],
+                "payload": data[8:].hex() if len(data) > 8 else "",
+            }
+        )
+
+    return logs
 
 
 class SwitchBotLockLogManager:
@@ -64,18 +155,22 @@ class SwitchBotLockLogManager:
         This method handles BLE errors gracefully and returns cached logs
         if the fetch fails.
         """
-        # Fetch from BLE device
         LOGGER.debug("Fetching logs for %s", self._mac)
 
         try:
-            logs = await self._lock_device.get_logs(base_time, max_entries)
+            native_get_logs = getattr(self._lock_device, "get_logs", None)
+            if callable(native_get_logs):
+                logs = await native_get_logs(base_time, max_entries)
+            else:
+                logs = await _compat_get_logs(
+                    self._lock_device, base_time, max_entries
+                )
         except Exception as err:
             LOGGER.warning(
                 "Failed to fetch logs for %s: %s. Returning cached logs.",
                 self._mac,
                 err,
             )
-            # Return cached logs on error - don't clear existing data
             return self._latest_logs.copy()
 
         if not logs:
@@ -84,13 +179,8 @@ class SwitchBotLockLogManager:
 
         LOGGER.debug("Retrieved %d logs for %s", len(logs), self._mac)
 
-        # Enrich with user names
         enriched_logs = await self._enrich_logs(logs)
-
-        # Store for sensors to read
         self._latest_logs = enriched_logs
-
-        # Notify all sensor entities to update their state
         self._notify_listeners()
 
         return enriched_logs
@@ -101,31 +191,24 @@ class SwitchBotLockLogManager:
 
         enriched = []
         for log in logs:
-            # Extract user ID from payload if present
             user_id = self._extract_user_id(log.get("payload", ""))
 
-            # Determine user name (only for mapped users with IDs)
             if user_id is not None and str(user_id) in users:
-                # User ID exists and is mapped to a name
                 user_name = users[str(user_id)]
             else:
-                # No user ID or not mapped - leave as None for sensor
                 user_name = None
 
-            # Determine source name for activity tracking
             try:
                 source_name = LockLogSource(log["source"]).name
                 source_display = source_name.replace("_", " ").title()
             except (ValueError, KeyError):
                 source_display = f"Unknown (Source {log.get('source', '?')})"
 
-            # Add human-readable action
             try:
                 action_name = LockLogAction(log["action"]).name.lower()
             except (ValueError, KeyError):
                 action_name = f"unknown_{log.get('action', '?')}"
 
-            # Add enriched fields
             enriched_log = {
                 **log,
                 "user_id": user_id,
@@ -151,11 +234,13 @@ class SwitchBotLockLogManager:
             return None
 
         try:
-            # Check for pattern 0x59XX (any type)
             if payload[0:2] == "59" and payload[2:4] in ("01", "03"):
-                # Extract byte 2 (characters 4-5) - user ID
                 user_id = int(payload[4:6], 16)
-                # User ID 0 means no user (system action)
+                return user_id if user_id > 0 else None
+            # SwitchBot Lock Ultra: first byte varies per device (seen: 2b, 31),
+            # method at byte 1 (01/03/06), user id at byte 2. GH issue #3.
+            if payload[0:2] != "59" and payload[2:4] in ("01", "03", "06"):
+                user_id = int(payload[4:6], 16)
                 return user_id if user_id > 0 else None
         except (ValueError, IndexError):
             pass
