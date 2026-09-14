@@ -122,7 +122,7 @@ class SwitchBotLockLastActivitySensor(SwitchBotLockLogSensorBase):
             return {}
 
         return {
-            "user_name": latest.get("user_name") or "Unknown",
+            "user_name": _display_user(latest),
             "user_id": latest.get("user_id"),
             "action": latest.get("action_name", "unknown"),
             "action_code": latest.get("action_code"),
@@ -132,6 +132,20 @@ class SwitchBotLockLastActivitySensor(SwitchBotLockLogSensorBase):
             "raw_timestamp": latest.get("raw_timestamp"),
             "clock_offset": self._log_manager.effective_clock_offset,
         }
+
+
+def _display_user(log: dict[str, Any]) -> str:
+    """User-facing name: mapped user, else a source-derived label (never "Unknown")."""
+    if name := log.get("user_name"):
+        return name
+    source = log.get("source_display", "")
+    if source == "Manual":
+        return "Manual thumbturn"
+    if source == "System":
+        return "Auto-lock"
+    if source == "Keypad":
+        return "Keypad (unmapped)"
+    return source or "Unidentified"
 
 
 class SwitchBotLockLastUserSensor(SwitchBotLockLogSensorBase):
@@ -194,7 +208,7 @@ class SwitchBotLockLastUserSensor(SwitchBotLockLogSensorBase):
     def native_value(self) -> str | None:
         """Return name of last user (only if mapped, otherwise None)."""
         if self._current_log:
-            return self._current_log.get("user_name")
+            return _display_user(self._current_log)
         return None
 
     @property
