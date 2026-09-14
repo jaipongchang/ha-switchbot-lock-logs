@@ -53,8 +53,6 @@ set_lock_user_name:
       example: "Dad's Fingerprint"
       selector:
         text:
-          type: text
-          max: 64
 
 delete_lock_user_name:
   fields:

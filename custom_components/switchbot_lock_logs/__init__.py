@@ -164,10 +164,10 @@ async def async_setup_entry(  # noqa: PLR0915
         entry.async_on_unload(
             async_track_time_interval(
                 hass,
-                timedelta(seconds=scan_interval),
                 lambda _now: hass.async_create_task(
                     _async_fetch_logs(log_manager, trigger="poll")
                 ),
+                timedelta(seconds=scan_interval),
             )
         )
 

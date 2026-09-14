@@ -71,7 +71,7 @@ class SwitchBotLockLogEventEntity(EventEntity):
         action_name: str = latest.get("action_name", "unknown")
         self._attr_event = Event(
             event_type=action_name if action_name in EVENT_TYPES else "unknown",
-            event_attributes={
+            data={
                 k: latest.get(k)
                 for k in (
                     "user_id",
