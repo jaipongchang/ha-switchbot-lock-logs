@@ -9,13 +9,23 @@ CLASSIC_MODELS: Final = {"lock", "lock_pro", "lock_lite"}
 
 # Lock Ultra action codes (observed 2026-09-14 on live device + GH issue #3).
 # CALIBRATION: extend after the Task 12 session (esp. failed_attempt).
+# Lock Ultra action codes — calibrated 2026-09-14 on live Lock Ultra 1CC5.
+# Note: failed keypad attempts are NOT written to the device's BLE log history.
 ULTRA_ACTION_MAP: Final[dict[int, str]] = {
     0: "auto_lock",
     15: "unlock",
+    18: "lock",
+    22: "lock",
     128: "lock",
 }
 # Lock Ultra source codes — raw ints observed; labels unreliable pre-calibration.
-ULTRA_SOURCE_MAP: Final[dict[int, str]] = {}
+# Lock Ultra source codes — calibrated: 1=manual thumbturn, 2=keypad/biometric,
+# 3=system (auto-lock).
+ULTRA_SOURCE_MAP: Final[dict[int, str]] = {
+    1: "manual",
+    2: "keypad",
+    3: "system",
+}
 
 _CLASSIC_CACHE: dict[str, dict[int, str]] = {}
 _MIN_PAYLOAD_LEN: Final = 6

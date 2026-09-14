@@ -4,6 +4,7 @@ from switchbot_lock_logs.models import (
     EVENT_TYPES,
     MODEL_ULTRA,
     ULTRA_ACTION_MAP,
+    ULTRA_SOURCE_MAP,
     decode_action,
     decode_source,
     enrich_log,
@@ -73,3 +74,12 @@ def test_event_types_covered():
     assert "unknown" in EVENT_TYPES
     assert "failed_attempt" in EVENT_TYPES
     assert set(ULTRA_ACTION_MAP.values()) <= set(EVENT_TYPES)
+
+
+def test_calibrated_ultra_maps():
+    assert decode_action(MODEL_ULTRA, 18) == "lock"
+    assert decode_action(MODEL_ULTRA, 22) == "lock"
+    assert decode_action(MODEL_ULTRA, 0) == "auto_lock"
+    assert ULTRA_SOURCE_MAP[1] == "manual"
+    assert ULTRA_SOURCE_MAP[2] == "keypad"
+    assert ULTRA_SOURCE_MAP[3] == "system"
