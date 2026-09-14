@@ -46,7 +46,7 @@ if TYPE_CHECKING:
 # Integration can only be configured via config entries
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
-PLATFORMS: list[Platform] = [Platform.SENSOR]
+PLATFORMS: list[Platform] = [Platform.SENSOR, Platform.EVENT]
 
 
 @dataclass

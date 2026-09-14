@@ -26,6 +26,14 @@
       "last_user": {
         "name": "Last user"
       }
+    },
+    "event": {
+      "lock_log": {
+        "name": "Lock log",
+        "state_attributes": {
+          "event_type": {}
+        }
+      }
     }
   },
   "exceptions": {
