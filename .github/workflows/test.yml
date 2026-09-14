@@ -1,0 +1,14 @@
+name: test
+on:
+  push: {branches: ["*"]}
+  pull_request:
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with: {python-version: "3.13"}
+      - run: pip install -r requirements.txt voluptuous pytest
+      - run: ruff check custom_components/switchbot_lock_logs tests/
+      - run: PYTHONPATH=custom_components pytest tests/ -v
