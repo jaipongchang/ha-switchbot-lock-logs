@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from datetime import timedelta
 from typing import TYPE_CHECKING
 
-from homeassistant.config_entries import ConfigEntry
+from homeassistant.config_entries import ConfigEntry, ConfigEntryNotReady
 from homeassistant.const import Platform
 from homeassistant.core import (
     Event,
@@ -132,10 +132,10 @@ async def async_setup_entry(  # noqa: PLR0915
     lock_device = await _get_switchbot_lock_device(hass, device_id)
     if lock_device is None:
         msg = (
-            f"Could not find SwitchBot lock device. Make sure the core SwitchBot "
-            f"integration is configured for this lock (device_id: {device_id})"
+            f"SwitchBot lock device not ready yet (device_id: {device_id}). "
+            f"The core SwitchBot integration may still be starting."
         )
-        raise HomeAssistantError(msg)
+        raise ConfigEntryNotReady(msg)
 
     # Create log manager
     switchbot_model = _get_switchbot_model(hass, device_id)
