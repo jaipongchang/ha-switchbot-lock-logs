@@ -5,6 +5,8 @@ from __future__ import annotations
 import logging
 from typing import Final
 
+import voluptuous as vol
+
 DOMAIN: Final = "switchbot_lock_logs"
 LOGGER = logging.getLogger(__package__)
 
@@ -23,6 +25,36 @@ DEFAULT_LOCK_LOG_MAX_ENTRIES: Final = 20
 SERVICE_GET_LOCK_LOGS: Final = "get_lock_logs"
 SERVICE_SET_LOCK_USER_NAME: Final = "set_lock_user_name"
 SERVICE_DELETE_LOCK_USER_NAME: Final = "delete_lock_user_name"
+
+GET_LOCK_LOGS_SCHEMA: Final = vol.Schema(
+    {
+        vol.Required("device_id"): str,
+        vol.Optional("max_entries", default=DEFAULT_LOCK_LOG_MAX_ENTRIES): vol.All(
+            vol.Coerce(int), vol.Range(min=1, max=100)
+        ),
+        vol.Optional("base_time", default=0): vol.All(
+            vol.Coerce(int), vol.Range(min=0, max=4294967295)
+        ),
+        vol.Optional("include_history", default=False): bool,
+    }
+)
+
+SET_LOCK_USER_NAME_SCHEMA: Final = vol.Schema(
+    {
+        vol.Required("device_id"): str,
+        vol.Required("user_id"): vol.All(vol.Coerce(int), vol.Range(min=0, max=255)),
+        vol.Required("name"): vol.All(
+            str, lambda s: s.strip(), vol.Length(min=1, max=64)
+        ),
+    }
+)
+
+DELETE_LOCK_USER_NAME_SCHEMA: Final = vol.Schema(
+    {
+        vol.Required("device_id"): str,
+        vol.Required("user_id"): vol.All(vol.Coerce(int), vol.Range(min=0, max=255)),
+    }
+)
 
 # Events
 EVENT_LOCK_LOG_ENTRY: Final = "switchbot_lock_logs_new_entry"

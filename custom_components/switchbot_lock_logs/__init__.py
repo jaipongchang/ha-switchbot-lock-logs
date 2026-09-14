@@ -24,12 +24,14 @@ from homeassistant.helpers.event import async_track_state_change_event
 from .const import (
     CONF_DEVICE_ID,
     CONF_MAC_ADDRESS,
-    DEFAULT_LOCK_LOG_MAX_ENTRIES,
+    DELETE_LOCK_USER_NAME_SCHEMA,
     DOMAIN,
+    GET_LOCK_LOGS_SCHEMA,
     LOGGER,
     SERVICE_DELETE_LOCK_USER_NAME,
     SERVICE_GET_LOCK_LOGS,
     SERVICE_SET_LOCK_USER_NAME,
+    SET_LOCK_USER_NAME_SCHEMA,
     SWITCHBOT_DOMAIN,
 )
 from .lock_log_manager import SwitchBotLockLogManager
@@ -256,8 +258,9 @@ async def _async_register_services(hass: HomeAssistant) -> None:
     async def async_get_lock_logs(call: ServiceCall) -> ServiceResponse:
         """Get lock logs service."""
         device_id = call.data["device_id"]
-        max_entries = call.data.get("max_entries", DEFAULT_LOCK_LOG_MAX_ENTRIES)
-        base_time = call.data.get("base_time", 0)
+        max_entries = call.data["max_entries"]
+        base_time = call.data["base_time"]
+        include_history = call.data["include_history"]
 
         # Find log manager for this device
         log_manager = await _find_log_manager_for_device(hass, device_id)
@@ -275,7 +278,10 @@ async def _async_register_services(hass: HomeAssistant) -> None:
                 translation_key="fetch_logs_error",
             ) from err
 
-        return {"logs": logs}
+        response: dict[str, object] = {"logs": logs}
+        if include_history:
+            response["history"] = log_manager.history_entries
+        return response
 
     async def async_set_lock_user_name(call: ServiceCall) -> None:
         """Set lock user name service."""
@@ -312,13 +318,20 @@ async def _async_register_services(hass: HomeAssistant) -> None:
         DOMAIN,
         SERVICE_GET_LOCK_LOGS,
         async_get_lock_logs,
+        schema=GET_LOCK_LOGS_SCHEMA,
         supports_response=SupportsResponse.ONLY,
     )
     hass.services.async_register(
-        DOMAIN, SERVICE_SET_LOCK_USER_NAME, async_set_lock_user_name
+        DOMAIN,
+        SERVICE_SET_LOCK_USER_NAME,
+        async_set_lock_user_name,
+        schema=SET_LOCK_USER_NAME_SCHEMA,
     )
     hass.services.async_register(
-        DOMAIN, SERVICE_DELETE_LOCK_USER_NAME, async_delete_lock_user_name
+        DOMAIN,
+        SERVICE_DELETE_LOCK_USER_NAME,
+        async_delete_lock_user_name,
+        schema=DELETE_LOCK_USER_NAME_SCHEMA,
     )
 
 
