@@ -108,11 +108,9 @@ class SwitchBotLockLogsConfigFlow(ConfigFlow, domain=DOMAIN):
         # Get all devices
         for device in dev_reg.devices.values():
             # Check if device belongs to switchbot integration
-            is_switchbot = False
             for entry_id in device.config_entries:
                 entry = self.hass.config_entries.async_get_entry(entry_id)
                 if entry and entry.domain == SWITCHBOT_DOMAIN:
-                    is_switchbot = True
                     # Check if it's a lock based on the sensor_type in entry data
                     sensor_type = entry.data.get("sensor_type", "")
                     if sensor_type in LOCK_MODELS:

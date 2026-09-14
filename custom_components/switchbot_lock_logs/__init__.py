@@ -238,7 +238,7 @@ async def _async_fetch_logs(
     """Fetch logs with error handling."""
     try:
         await log_manager.async_fetch_logs(trigger=trigger)
-    except Exception:
+    except Exception:  # noqa: BLE001 - surface any fetch failure in the log
         LOGGER.exception("Error fetching logs")
 
 

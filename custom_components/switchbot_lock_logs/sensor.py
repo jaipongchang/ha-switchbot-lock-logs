@@ -27,9 +27,11 @@ if TYPE_CHECKING:
     from . import SwitchBotLockLogsConfigEntry
     from .lock_log_manager import SwitchBotLockLogManager
 
+_MIN_VALID_PAYLOAD_LENGTH = 6
+
 
 async def async_setup_entry(
-    hass: HomeAssistant,
+    hass: HomeAssistant,  # noqa: ARG001 - hass required by HA hook signature
     entry: SwitchBotLockLogsConfigEntry,
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
@@ -184,7 +186,7 @@ class SwitchBotLockLastUserSensor(SwitchBotLockLogSensorBase):
 
         A valid payload indicates a real user action rather than a system event.
         """
-        if not payload or len(payload) < 6:
+        if not payload or len(payload) < _MIN_VALID_PAYLOAD_LENGTH:
             return False
         return payload != "000000000000"
 

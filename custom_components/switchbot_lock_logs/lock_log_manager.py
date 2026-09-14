@@ -58,9 +58,10 @@ async def _compat_get_logs(
     timestamp_bytes = base_time.to_bytes(4, "big").hex()
     base_cmd = COMMAND_LOCK_LOG_BASE_TIME + timestamp_bytes
 
-    result = await lock_device._send_command(base_cmd)
+    result = await lock_device._send_command(base_cmd)  # noqa: SLF001 - pySwitchbot compat path
 
-    if not result or not lock_device._check_command_result(
+    if not result or not lock_device._check_command_result(  # noqa: SLF001
+
         result,
         0,
         COMMAND_RESULT_EXPECTED_VALUES,
@@ -71,9 +72,10 @@ async def _compat_get_logs(
     logs: list[dict[str, Any]] = []
 
     for index in range(max_entries):
-        result = await lock_device._send_command(COMMAND_READ_LOCK_LOG)
+        result = await lock_device._send_command(COMMAND_READ_LOCK_LOG)  # noqa: SLF001 - pySwitchbot compat path
 
-        if not result or not lock_device._check_command_result(
+        if not result or not lock_device._check_command_result(  # noqa: SLF001
+
             result,
             0,
             COMMAND_RESULT_EXPECTED_VALUES,

@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
-from homeassistant.core import HomeAssistant
+from typing import TYPE_CHECKING
+
 from homeassistant.helpers.storage import Store
 
 from .const import STORAGE_KEY_LOCK_USERS, STORAGE_VERSION_LOCK_USERS
+
+if TYPE_CHECKING:
+    from homeassistant.core import HomeAssistant
 
 
 class SwitchBotLockUserStore:
