@@ -24,6 +24,9 @@ SERVICE_GET_LOCK_LOGS: Final = "get_lock_logs"
 SERVICE_SET_LOCK_USER_NAME: Final = "set_lock_user_name"
 SERVICE_DELETE_LOCK_USER_NAME: Final = "delete_lock_user_name"
 
+# Events
+EVENT_LOCK_LOG_ENTRY: Final = "switchbot_lock_logs_new_entry"
+
 # Storage
 STORAGE_KEY_LOCK_USERS: Final = "switchbot_lock_logs_users"
 STORAGE_VERSION_LOCK_USERS: Final = 1

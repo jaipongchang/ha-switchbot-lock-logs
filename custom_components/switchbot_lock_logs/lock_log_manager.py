@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from collections.abc import Callable
 from enum import Enum
 from typing import Any
@@ -33,9 +34,10 @@ except ImportError:
         UNLOCK_FAILED = 3
         LOCK_FAILED = 4
 
-from .const import LOGGER
+from .const import EVENT_LOCK_LOG_ENTRY, LOGGER
+from .history import CalibrationStore, HistoryStore
+from .models import enrich_log
 from .storage import SwitchBotLockUserStore
-
 
 COMMAND_LOCK_LOG_BASE_TIME = "57001401"
 COMMAND_READ_LOCK_LOG = "57001405"
@@ -107,18 +109,32 @@ async def _compat_get_logs(
 class SwitchBotLockLogManager:
     """Manage lock logs for a single lock device."""
 
-    def __init__(
+    def __init__(  # noqa: PLR0913
         self,
         hass: HomeAssistant,
         lock_device: SwitchbotLock,
         mac: str,
         user_store: SwitchBotLockUserStore,
+        *,
+        model: str = "lock",
+        history_store: HistoryStore,
+        calibration_store: CalibrationStore,
+        history_cap: int = 500,
+        manual_clock_offset: int | None = None,
     ) -> None:
         """Initialize the log manager."""
         self._hass = hass
         self._lock_device = lock_device
         self._mac = mac
         self._user_store = user_store
+        self._model = model
+        self._history_store = history_store
+        self._history_buffer = (
+            history_store.get_buffer(mac, history_cap) if history_cap > 0 else None
+        )
+        self._calibration_store = calibration_store
+        self._tracker = calibration_store.get_tracker(mac)
+        self._manual_clock_offset = manual_clock_offset
         self._latest_logs: list[dict[str, Any]] = []
         self._listeners: list[Callable[[], None]] = []
 
@@ -144,7 +160,11 @@ class SwitchBotLockLogManager:
             listener()
 
     async def async_fetch_logs(
-        self, base_time: int = 0, max_entries: int = 10
+        self,
+        base_time: int = 0,
+        max_entries: int = 10,
+        *,
+        trigger: str = "manual",
     ) -> list[dict[str, Any]]:
         """
         Fetch logs from device and enrich with user names.
@@ -180,72 +200,69 @@ class SwitchBotLockLogManager:
         LOGGER.debug("Retrieved %d logs for %s", len(logs), self._mac)
 
         enriched_logs = await self._enrich_logs(logs)
+
+        if (
+            trigger == "state_change"
+            and enriched_logs
+            and self._tracker.add_sample(
+                time.time(), enriched_logs[0]["raw_timestamp"]
+            )
+        ):
+            await self._calibration_store.async_set_tracker(self._mac, self._tracker)
+
+        new_entries: list[dict[str, Any]] = []
+        if self._history_buffer is not None:
+            new_entries = self._history_buffer.append(enriched_logs)
+            await self._history_store.async_save(self._mac)
+        else:
+            new_entries = enriched_logs
+
+        for entry in new_entries:
+            self._hass.bus.async_fire(
+                EVENT_LOCK_LOG_ENTRY,
+                {
+                    **entry,
+                    "mac": self._mac,
+                    "device_name": self._lock_device.name,
+                },
+            )
+
         self._latest_logs = enriched_logs
         self._notify_listeners()
 
         return enriched_logs
 
     async def _enrich_logs(self, logs: list[dict[str, Any]]) -> list[dict[str, Any]]:
-        """Add user names and human-readable fields to logs."""
+        """Enrich raw logs with decoding, user names, corrected timestamps."""
         users = await self._user_store.async_get_users(self._mac)
+        return [
+            enrich_log(
+                log,
+                model=self._model,
+                users=users,
+                clock_offset=self.effective_clock_offset,
+            )
+            for log in logs
+        ]
 
-        enriched = []
-        for log in logs:
-            user_id = self._extract_user_id(log.get("payload", ""))
+    @property
+    def effective_clock_offset(self) -> int | None:
+        """Manual override wins over learned offset."""
+        return (
+            self._manual_clock_offset
+            if self._manual_clock_offset is not None
+            else self._tracker.offset()
+        )
 
-            if user_id is not None and str(user_id) in users:
-                user_name = users[str(user_id)]
-            else:
-                user_name = None
+    @property
+    def model(self) -> str:
+        """Get the lock model."""
+        return self._model
 
-            try:
-                source_name = LockLogSource(log["source"]).name
-                source_display = source_name.replace("_", " ").title()
-            except (ValueError, KeyError):
-                source_display = f"Unknown (Source {log.get('source', '?')})"
-
-            try:
-                action_name = LockLogAction(log["action"]).name.lower()
-            except (ValueError, KeyError):
-                action_name = f"unknown_{log.get('action', '?')}"
-
-            enriched_log = {
-                **log,
-                "user_id": user_id,
-                "user_name": user_name,
-                "source_display": source_display,
-                "action_name": action_name,
-            }
-            enriched.append(enriched_log)
-
-        return enriched
-
-    @staticmethod
-    def _extract_user_id(payload: str) -> int | None:
-        """
-        Extract user ID from log payload.
-
-        Payload formats:
-        - 59 03 XX YY 00 00 (hex string) - Type 3 pattern
-        - 59 01 XX YY 00 00 (hex string) - Type 1 pattern
-        Where XX (byte 2) is the user ID.
-        """
-        if not payload or len(payload) < 6:
-            return None
-
-        try:
-            if payload[0:2] == "59" and payload[2:4] in ("01", "03"):
-                user_id = int(payload[4:6], 16)
-                return user_id if user_id > 0 else None
-            # SwitchBot Lock Ultra: first byte varies per device (seen: 2b, 31),
-            # method at byte 1 (01/03/06), user id at byte 2. GH issue #3.
-            if payload[0:2] != "59" and payload[2:4] in ("01", "03", "06"):
-                user_id = int(payload[4:6], 16)
-                return user_id if user_id > 0 else None
-        except (ValueError, IndexError):
-            pass
-
-        return None
+    @property
+    def history_entries(self) -> list[dict[str, Any]]:
+        """Get all history-buffer entries."""
+        return self._history_buffer.entries if self._history_buffer else []
 
     @property
     def latest_log(self) -> dict[str, Any] | None:
