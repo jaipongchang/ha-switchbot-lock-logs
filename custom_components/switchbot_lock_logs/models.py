@@ -1,0 +1,84 @@
+"""Model-aware decoding and enrichment for SwitchBot lock logs (pure logic)."""
+
+from __future__ import annotations
+
+from typing import Any, Final
+
+MODEL_ULTRA: Final = "lock_ultra"
+CLASSIC_MODELS: Final = {"lock", "lock_pro", "lock_lite"}
+
+# Lock Ultra action codes (observed 2026-09-14 on live device + GH issue #3).
+# CALIBRATION: extend after the Task 12 session (esp. failed_attempt).
+ULTRA_ACTION_MAP: Final[dict[int, str]] = {
+    0: "auto_lock",
+    15: "unlock",
+    128: "lock",
+}
+# Lock Ultra source codes — raw ints observed; labels unreliable pre-calibration.
+ULTRA_SOURCE_MAP: Final[dict[int, str]] = {}
+
+_CLASSIC_CACHE: dict[str, dict[int, str]] = {}
+
+def _classic_enums(domain: str) -> dict[int, str]:
+    if domain not in _CLASSIC_CACHE:
+        try:
+            if domain == "action":
+                from switchbot.const import LockLogAction as enum
+            else:
+                from switchbot.const import LockLogSource as enum
+            _CLASSIC_CACHE[domain] = {int(e.value): e.name.lower() for e in enum}
+        except Exception:
+            _CLASSIC_CACHE[domain] = {}
+    return _CLASSIC_CACHE[domain]
+
+def extract_user_id(payload: str) -> int | None:
+    """User id at payload byte 2; method byte 1 (01/03/06); byte 0 varies on Ultra."""
+    if not payload or len(payload) < 6:
+        return None
+    try:
+        if payload[0:2] == "59" and payload[2:4] in ("01", "03"):
+            user_id = int(payload[4:6], 16)
+            return user_id if user_id > 0 else None
+        if payload[0:2] != "59" and payload[2:4] in ("01", "03", "06"):
+            user_id = int(payload[4:6], 16)
+            return user_id if user_id > 0 else None
+    except (ValueError, IndexError):
+        pass
+    return None
+
+def decode_action(model: str, code: int) -> str:
+    if model == MODEL_ULTRA:
+        return ULTRA_ACTION_MAP.get(code, f"unknown_{code}")
+    return _classic_enums("action").get(code, f"unknown_{code}")
+
+def decode_source(model: str, code: int) -> str:
+    if model == MODEL_ULTRA:
+        return ULTRA_SOURCE_MAP.get(code, f"unknown_{code}")
+    return _classic_enums("source").get(code, f"unknown_{code}")
+
+def enrich_log(
+    log: dict[str, Any], *, model: str, users: dict[str, str], clock_offset: int | None
+) -> dict[str, Any]:
+    """Return a copy of log with decoded names, codes, corrected timestamp."""
+    raw_ts = int(log.get("timestamp", 0))
+    user_id = extract_user_id(log.get("payload", ""))
+    action_code = int(log.get("action", 0))
+    source_code = int(log.get("source", 0))
+    source_name = decode_source(model, source_code)
+    return {
+        **log,
+        "timestamp": raw_ts + clock_offset if clock_offset else raw_ts,
+        "raw_timestamp": raw_ts,
+        "user_id": user_id,
+        "user_name": users.get(str(user_id)) if user_id is not None else None,
+        "action_code": action_code,
+        "action_name": decode_action(model, action_code),
+        "source_code": source_code,
+        "source_name": source_name,
+        "source_display": source_name.replace("_", " ").title(),
+        "payload": log.get("payload", ""),
+    }
+
+EVENT_TYPES: Final[list[str]] = sorted(
+    {"auto_lock", "lock", "unlock", "failed_attempt", "unknown"} | set(ULTRA_ACTION_MAP.values())
+)
