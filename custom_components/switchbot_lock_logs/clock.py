@@ -8,6 +8,8 @@ from typing import Final
 
 MAX_SAMPLES: Final = 5
 MIN_VALID: Final = 0
+# Deliberate (0, 3600] window: the spec said 30s but the bound was widened
+# during Task 2 adjudication; median-of-5 mitigates a single polluted sample.
 MAX_VALID: Final = 3600
 
 

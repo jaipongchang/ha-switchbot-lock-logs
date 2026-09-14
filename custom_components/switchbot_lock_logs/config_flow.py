@@ -164,7 +164,7 @@ class SwitchBotLockLogsOptionsFlow(OptionsFlow):
                 ): vol.All(vol.Coerce(int), vol.Range(min=0, max=5000)),
                 vol.Required(
                     "clock_offset_auto", default=current.get("clock_offset_auto", True)
-                ): bool,
+                ): selector.BooleanSelector(),
                 vol.Required(
                     "clock_offset_seconds",
                     default=current.get("clock_offset_seconds", 0),

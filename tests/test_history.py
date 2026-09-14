@@ -31,3 +31,35 @@ def test_ring_cap():
 def test_dedup_after_restore():
     buf = HistoryBuffer(cap=10, initial=[ENTRY_A])
     assert buf.append([ENTRY_A]) == []
+
+
+def test_resize_truncates_to_newest():
+    buf = HistoryBuffer(cap=10)
+    buf.append([ENTRY_A, ENTRY_B, ENTRY_C])
+    buf.resize(2)
+    assert [e["timestamp"] for e in buf.entries] == [300, 200]
+
+
+def test_resize_grow_keeps_entries():
+    buf = HistoryBuffer(cap=1)
+    buf.append([ENTRY_A])
+    buf.resize(3)
+    assert buf.append([ENTRY_B, ENTRY_C]) == [ENTRY_C, ENTRY_B]
+    assert len(buf) == 3
+
+
+def test_resize_re_dedup_after_truncation():
+    buf = HistoryBuffer(cap=10)
+    buf.append([ENTRY_A, ENTRY_B, ENTRY_C])
+    buf.resize(1)
+    # ENTRY_A's seen-key must have been evicted, so it counts as new again.
+    assert buf.append([ENTRY_A]) == [ENTRY_A]
+    assert [e["timestamp"] for e in buf.entries] == [100]
+
+
+def test_resize_same_cap_noop():
+    buf = HistoryBuffer(cap=2)
+    buf.append([ENTRY_A, ENTRY_B])
+    buf.resize(2)
+    assert buf.append([ENTRY_A]) == []
+    assert len(buf) == 2

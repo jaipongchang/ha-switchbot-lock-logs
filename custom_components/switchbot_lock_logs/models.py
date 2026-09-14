@@ -8,7 +8,6 @@ MODEL_ULTRA: Final = "lock_ultra"
 CLASSIC_MODELS: Final = {"lock", "lock_pro", "lock_lite"}
 
 # Lock Ultra action codes (observed 2026-09-14 on live device + GH issue #3).
-# CALIBRATION: extend after the Task 12 session (esp. failed_attempt).
 # Lock Ultra action codes — calibrated 2026-09-14 on live Lock Ultra 1CC5.
 # Note: failed keypad attempts are NOT written to the device's BLE log history.
 ULTRA_ACTION_MAP: Final[dict[int, str]] = {
@@ -107,6 +106,7 @@ EVENT_TYPES: Final[list[str]] = sorted(
         "auto_lock",
         "lock",
         "unlock",
+        # failed_attempt reserved: not written to device BLE log (see README/issue)
         "failed_attempt",
         "unknown",
     }

@@ -31,6 +31,14 @@ def test_get_lock_logs_rejects():
         GET_LOCK_LOGS_SCHEMA({})  # missing device_id
 
 
+def test_include_history_rejects_strings():
+    # vol.Boolean() rejects user-supplied strings like "yes"/"true".
+    with pytest.raises(vol.Invalid):
+        GET_LOCK_LOGS_SCHEMA({"device_id": "a", "include_history": "yes"})
+    with pytest.raises(vol.Invalid):
+        GET_LOCK_LOGS_SCHEMA({"device_id": "a", "include_history": "true"})
+
+
 def test_set_user_name():
     out = SET_LOCK_USER_NAME_SCHEMA(
         {"device_id": "a", "user_id": 10, "name": "  Alice "}

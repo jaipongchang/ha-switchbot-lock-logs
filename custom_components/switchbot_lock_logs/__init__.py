@@ -107,10 +107,13 @@ async def async_setup_entry(  # noqa: PLR0915
     options = entry.options
     scan_interval = options.get("scan_interval", DEFAULT_SCAN_INTERVAL)
     history_cap = options.get("history_size", DEFAULT_HISTORY_SIZE)
+    # Explicit None-check: seconds=0 with auto off means "no correction",
+    # not "fall back to the learned offset".
+    offset_seconds = options.get("clock_offset_seconds")
     manual_offset = (
         None
         if options.get("clock_offset_auto", True)
-        else options.get("clock_offset_seconds", 0) or None
+        else (0 if offset_seconds is None else offset_seconds)
     )
 
     # Initialize shared stores

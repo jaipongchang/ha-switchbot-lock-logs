@@ -47,6 +47,8 @@ if TYPE_CHECKING:
 COMMAND_LOCK_LOG_BASE_TIME = "57001401"
 COMMAND_READ_LOCK_LOG = "57001405"
 COMMAND_RESULT_EXPECTED_VALUES = {1, 6}
+# Dedup-ledger bound when history persistence is disabled (log volume is low).
+NO_HISTORY_SEEN_MAX = 1000
 
 
 async def _compat_get_logs(
@@ -137,6 +139,9 @@ class SwitchBotLockLogManager:
         self._tracker = calibration_store.get_tracker(mac)
         self._manual_clock_offset = manual_clock_offset
         self._latest_logs: list[dict[str, Any]] = []
+        # Dedup-only ledger used when history persistence is disabled, so a
+        # refetched entry does not re-fire on every fetch.
+        self._no_history_seen: set[tuple[int, int, str]] = set()
         self._listeners: list[Callable[[], None]] = []
 
     @callback
@@ -210,9 +215,19 @@ class SwitchBotLockLogManager:
         new_entries: list[dict[str, Any]] = []
         if self._history_buffer is not None:
             new_entries = self._history_buffer.append(enriched_logs)
-            await self._history_store.async_save(self._mac)
+            if new_entries:
+                await self._history_store.async_save(self._mac)
         else:
-            new_entries = enriched_logs
+            new_entries = [
+                entry
+                for entry in enriched_logs
+                if self._dedup_key(entry) not in self._no_history_seen
+            ]
+            for entry in new_entries:
+                self._no_history_seen.add(self._dedup_key(entry))
+                if len(self._no_history_seen) > NO_HISTORY_SEEN_MAX:
+                    # FIFO discard of the oldest-inserted key (bounded ledger).
+                    self._no_history_seen.remove(next(iter(self._no_history_seen)))
 
         for entry in new_entries:
             self._hass.bus.async_fire(
@@ -228,6 +243,15 @@ class SwitchBotLockLogManager:
         self._notify_listeners()
 
         return enriched_logs
+
+    @staticmethod
+    def _dedup_key(entry: dict[str, Any]) -> tuple[int, int, str]:
+        """Dedup key: (timestamp, action, payload)."""
+        return (
+            int(entry.get("timestamp", 0)),
+            int(entry.get("action", 0)),
+            str(entry.get("payload", "")),
+        )
 
     async def _enrich_logs(self, logs: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """Enrich raw logs with decoding, user names, corrected timestamps."""

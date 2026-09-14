@@ -49,6 +49,15 @@ class HistoryBuffer:
             dropped = self._entries.pop()
             self._seen.discard(_key(dropped))
 
+    def resize(self, cap: int) -> None:
+        """Re-cap the buffer; truncate to the newest entries when shrinking."""
+        if cap == self._cap:
+            return
+        self._cap = cap
+        while len(self._entries) > cap:
+            dropped = self._entries.pop()
+            self._seen.discard(_key(dropped))
+
     def append(self, entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """Insert newest-first batch; return only entries not seen before."""
         new = [e for e in entries if _key(e) not in self._seen]
@@ -83,6 +92,8 @@ class HistoryStore:
         """Return the buffer for a MAC, restored from persisted data."""
         if mac not in self._buffers:
             self._buffers[mac] = HistoryBuffer(cap, self._data.get(mac, []))
+        else:
+            self._buffers[mac].resize(cap)
         return self._buffers[mac]
 
     async def async_save(self, mac: str) -> None:
@@ -92,7 +103,7 @@ class HistoryStore:
 
 
 class CalibrationStore:
-    """Persists clock offset samples and manual overrides per MAC."""
+    """Persists clock offset samples per MAC."""
 
     def __init__(self, hass: HomeAssistant) -> None:
         """Create the store bound to HA storage."""
@@ -109,16 +120,7 @@ class CalibrationStore:
         """Return a tracker seeded with the MAC's learned samples."""
         return ClockOffsetTracker(self._data.get(mac, {}).get("samples", []))
 
-    def get_manual_offset(self, mac: str) -> int | None:
-        """Return the manual offset override for a MAC, if set."""
-        return self._data.get(mac, {}).get("manual_offset")
-
     async def async_set_tracker(self, mac: str, tracker: ClockOffsetTracker) -> None:
         """Persist the tracker's current samples for a MAC."""
         self._data.setdefault(mac, {})["samples"] = tracker.samples
-        await self._store.async_save(self._data)
-
-    async def async_set_manual_offset(self, mac: str, seconds: int | None) -> None:
-        """Persist (or clear) the manual offset override for a MAC."""
-        self._data.setdefault(mac, {})["manual_offset"] = seconds
         await self._store.async_save(self._data)

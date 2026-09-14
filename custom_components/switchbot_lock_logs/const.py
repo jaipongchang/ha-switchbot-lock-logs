@@ -22,6 +22,7 @@ CONF_MAC_ADDRESS: Final = "mac_address"
 DEFAULT_LOCK_LOG_MAX_ENTRIES: Final = 20
 DEFAULT_SCAN_INTERVAL: Final = 300
 DEFAULT_HISTORY_SIZE: Final = 500
+STRICT_BOOLEAN_VALUES: Final = (True, False)
 
 # Services
 SERVICE_GET_LOCK_LOGS: Final = "get_lock_logs"
@@ -37,7 +38,11 @@ GET_LOCK_LOGS_SCHEMA: Final = vol.Schema(
         vol.Optional("base_time", default=0): vol.All(
             vol.Coerce(int), vol.Range(min=0, max=4294967295)
         ),
-        vol.Optional("include_history", default=False): bool,
+        # Strict boolean: vol.Boolean() coerces "yes"/"true" strings, which we
+        # reject here; vol.Any only matches real booleans (ints coerce to bool).
+        vol.Optional("include_history", default=False): vol.All(
+            vol.Any(*STRICT_BOOLEAN_VALUES), bool
+        ),
     }
 )
 
