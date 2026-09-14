@@ -121,9 +121,14 @@ class SwitchBotLockLastActivitySensor(SwitchBotLockLogSensorBase):
 
         return {
             "user_name": latest.get("user_name") or "Unknown",
-            "action": latest.get("action_name", "unknown"),
-            "source": latest.get("source_display", "unknown"),
             "user_id": latest.get("user_id"),
+            "action": latest.get("action_name", "unknown"),
+            "action_code": latest.get("action_code"),
+            "source": latest.get("source_display", "unknown"),
+            "source_code": latest.get("source_code"),
+            "payload": latest.get("payload"),
+            "raw_timestamp": latest.get("raw_timestamp"),
+            "clock_offset": self._log_manager.effective_clock_offset,
         }
 
 
