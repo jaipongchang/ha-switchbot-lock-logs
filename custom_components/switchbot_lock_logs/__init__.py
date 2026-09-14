@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import timedelta
 from typing import TYPE_CHECKING
 
 from homeassistant.config_entries import ConfigEntry
@@ -19,11 +20,16 @@ from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
-from homeassistant.helpers.event import async_track_state_change_event
+from homeassistant.helpers.event import (
+    async_track_state_change_event,
+    async_track_time_interval,
+)
 
 from .const import (
     CONF_DEVICE_ID,
     CONF_MAC_ADDRESS,
+    DEFAULT_HISTORY_SIZE,
+    DEFAULT_SCAN_INTERVAL,
     DELETE_LOCK_USER_NAME_SCHEMA,
     DOMAIN,
     GET_LOCK_LOGS_SCHEMA,
@@ -34,6 +40,7 @@ from .const import (
     SET_LOCK_USER_NAME_SCHEMA,
     SWITCHBOT_DOMAIN,
 )
+from .history import CalibrationStore, HistoryStore
 from .lock_log_manager import SwitchBotLockLogManager
 from .storage import SwitchBotLockUserStore
 
@@ -80,7 +87,7 @@ async def async_setup(
     return True
 
 
-async def async_setup_entry(
+async def async_setup_entry(  # noqa: PLR0915
     hass: HomeAssistant,
     entry: SwitchBotLockLogsConfigEntry,
 ) -> bool:
@@ -96,6 +103,28 @@ async def async_setup_entry(
 
     user_store = hass.data[DOMAIN]["user_store"]
 
+    # Read options
+    options = entry.options
+    scan_interval = options.get("scan_interval", DEFAULT_SCAN_INTERVAL)
+    history_cap = options.get("history_size", DEFAULT_HISTORY_SIZE)
+    manual_offset = (
+        None
+        if options.get("clock_offset_auto", True)
+        else options.get("clock_offset_seconds", 0) or None
+    )
+
+    # Initialize shared stores
+    history_store = hass.data[DOMAIN].get("history_store")
+    if history_store is None:
+        history_store = HistoryStore(hass)
+        await history_store.async_load()
+        hass.data[DOMAIN]["history_store"] = history_store
+    calibration_store = hass.data[DOMAIN].get("calibration_store")
+    if calibration_store is None:
+        calibration_store = CalibrationStore(hass)
+        await calibration_store.async_load()
+        hass.data[DOMAIN]["calibration_store"] = calibration_store
+
     # Find the SwitchBot lock device from the core integration
     lock_device = await _get_switchbot_lock_device(hass, device_id)
     if lock_device is None:
@@ -106,11 +135,17 @@ async def async_setup_entry(
         raise HomeAssistantError(msg)
 
     # Create log manager
+    switchbot_model = _get_switchbot_model(hass, device_id)
     log_manager = SwitchBotLockLogManager(
         hass,
         lock_device,
         mac_address,
         user_store,
+        model=switchbot_model,
+        history_store=history_store,
+        calibration_store=calibration_store,
+        history_cap=history_cap,
+        manual_clock_offset=manual_offset,
     )
 
     # Store runtime data
@@ -123,6 +158,18 @@ async def async_setup_entry(
     if "log_managers" not in hass.data[DOMAIN]:
         hass.data[DOMAIN]["log_managers"] = {}
     hass.data[DOMAIN]["log_managers"][entry.entry_id] = log_manager
+
+    # Fallback poll timer (options: scan_interval, 0 = off)
+    if scan_interval > 0:
+        entry.async_on_unload(
+            async_track_time_interval(
+                hass,
+                timedelta(seconds=scan_interval),
+                lambda _now: hass.async_create_task(
+                    _async_fetch_logs(log_manager, trigger="poll")
+                ),
+            )
+        )
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     entry.async_on_unload(entry.add_update_listener(_async_update_listener))
@@ -148,7 +195,9 @@ async def async_setup_entry(
                     old_state.state,
                     new_state.state,
                 )
-                hass.async_create_task(_async_fetch_logs(log_manager))
+                hass.async_create_task(
+                    _async_fetch_logs(log_manager, trigger="state_change")
+                )
 
         cancel_listener = async_track_state_change_event(
             hass, [lock_entity_id], _async_on_lock_state_change
@@ -183,12 +232,27 @@ async def _async_update_listener(
     await hass.config_entries.async_reload(entry.entry_id)
 
 
-async def _async_fetch_logs(log_manager: SwitchBotLockLogManager) -> None:
+async def _async_fetch_logs(
+    log_manager: SwitchBotLockLogManager, trigger: str = "manual"
+) -> None:
     """Fetch logs with error handling."""
     try:
-        await log_manager.async_fetch_logs()
+        await log_manager.async_fetch_logs(trigger=trigger)
     except Exception:
         LOGGER.exception("Error fetching logs")
+
+
+def _get_switchbot_model(hass: HomeAssistant, device_id: str) -> str:
+    """Return the switchbot sensor_type for the lock (default classic)."""
+    dev_reg = dr.async_get(hass)
+    device = dev_reg.async_get(device_id)
+    if not device:
+        return "lock"
+    for entry_id in device.config_entries:
+        entry = hass.config_entries.async_get_entry(entry_id)
+        if entry and entry.domain == SWITCHBOT_DOMAIN:
+            return str(entry.data.get("sensor_type", "lock"))
+    return "lock"
 
 
 async def _find_lock_entity_id(hass: HomeAssistant, device_id: str) -> str | None:

@@ -18,6 +18,18 @@
       }
     }
   },
+  "options": {
+    "step": {
+      "init": {
+        "data": {
+          "scan_interval": "Fallback poll interval (seconds, 0 = off)",
+          "history_size": "History entries kept per lock (0 = off)",
+          "clock_offset_auto": "Auto-learn clock offset",
+          "clock_offset_seconds": "Fixed clock offset (seconds)"
+        }
+      }
+    }
+  },
   "entity": {
     "sensor": {
       "last_activity": {

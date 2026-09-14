@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import voluptuous as vol
-from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
+from homeassistant.config_entries import ConfigFlow, ConfigFlowResult, OptionsFlow
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import selector
 
@@ -13,11 +13,16 @@ from .const import (
     CONF_DEVICE_ID,
     CONF_DEVICE_NAME,
     CONF_MAC_ADDRESS,
+    DEFAULT_HISTORY_SIZE,
+    DEFAULT_SCAN_INTERVAL,
     DOMAIN,
     LOCK_MODELS,
     LOGGER,
     SWITCHBOT_DOMAIN,
 )
+
+if TYPE_CHECKING:
+    from homeassistant.config_entries import ConfigEntry
 
 
 class SwitchBotLockLogsConfigFlow(ConfigFlow, domain=DOMAIN):
@@ -88,6 +93,13 @@ class SwitchBotLockLogsConfigFlow(ConfigFlow, domain=DOMAIN):
             errors=errors,
         )
 
+    @staticmethod
+    def async_get_options_flow(
+        config_entry: ConfigEntry,  # noqa: ARG004
+    ) -> SwitchBotLockLogsOptionsFlow:
+        """Create the options flow handler."""
+        return SwitchBotLockLogsOptionsFlow()
+
     async def _async_find_switchbot_locks(self) -> None:
         """Find all SwitchBot lock devices from the core integration."""
         self._available_locks = {}
@@ -129,3 +141,36 @@ class SwitchBotLockLogsConfigFlow(ConfigFlow, domain=DOMAIN):
                     break
 
         LOGGER.debug("Found %d available SwitchBot locks", len(self._available_locks))
+
+
+class SwitchBotLockLogsOptionsFlow(OptionsFlow):
+    """Options for a configured lock."""
+
+    async def async_step_init(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Manage the options."""
+        if user_input is not None:
+            return self.async_create_entry(title="", data=user_input)
+
+        current = self.config_entry.options
+        schema = vol.Schema(
+            {
+                vol.Required(
+                    "scan_interval",
+                    default=current.get("scan_interval", DEFAULT_SCAN_INTERVAL),
+                ): vol.All(vol.Coerce(int), vol.Range(min=0, max=3600)),
+                vol.Required(
+                    "history_size",
+                    default=current.get("history_size", DEFAULT_HISTORY_SIZE),
+                ): vol.All(vol.Coerce(int), vol.Range(min=0, max=5000)),
+                vol.Required(
+                    "clock_offset_auto", default=current.get("clock_offset_auto", True)
+                ): bool,
+                vol.Required(
+                    "clock_offset_seconds",
+                    default=current.get("clock_offset_seconds", 0),
+                ): vol.All(vol.Coerce(int), vol.Range(min=-86400, max=86400)),
+            }
+        )
+        return self.async_show_form(step_id="init", data_schema=schema)

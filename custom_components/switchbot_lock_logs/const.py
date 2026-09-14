@@ -20,6 +20,8 @@ CONF_MAC_ADDRESS: Final = "mac_address"
 
 # Lock Log Defaults
 DEFAULT_LOCK_LOG_MAX_ENTRIES: Final = 20
+DEFAULT_SCAN_INTERVAL: Final = 300
+DEFAULT_HISTORY_SIZE: Final = 500
 
 # Services
 SERVICE_GET_LOCK_LOGS: Final = "get_lock_logs"
