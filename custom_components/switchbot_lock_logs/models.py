@@ -78,14 +78,20 @@ def decode_source(model: str, code: int) -> str:
 
 
 def enrich_log(
-    log: dict[str, Any], *, model: str, users: dict[str, str], clock_offset: int | None
+    log: dict[str, Any],
+    *,
+    model: str,
+    users: dict[str, str],
+    clock_offset: int | None,
+    source_overrides: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     """Return a copy of log with decoded names, codes, corrected timestamp."""
     raw_ts = int(log.get("timestamp", 0))
     user_id = extract_user_id(log.get("payload", ""))
     action_code = int(log.get("action", 0))
     source_code = int(log.get("source", 0))
-    source_name = decode_source(model, source_code)
+    overrides = source_overrides or {}
+    source_name = overrides.get(str(source_code)) or decode_source(model, source_code)
     return {
         **log,
         "timestamp": raw_ts + clock_offset if clock_offset else raw_ts,

@@ -43,6 +43,21 @@ class SwitchBotLockUserStore:
         lock_data = await self.async_get_lock_data(mac)
         return lock_data.get("users", {})
 
+    async def async_get_source_overrides(self, mac: str) -> dict[str, str]:
+        """Get per-lock source-code display overrides."""
+        lock_data = await self.async_get_lock_data(mac)
+        return lock_data.get("source_overrides", {})
+
+    async def async_set_source_override(
+        self, mac: str, source_code: int, display_name: str
+    ) -> None:
+        """Set a per-lock source-code display override."""
+        if mac not in self._data:
+            self._data[mac] = {"name": None, "users": {}}
+        self._data[mac].setdefault("source_overrides", {})
+        self._data[mac]["source_overrides"][str(source_code)] = display_name
+        await self.async_save()
+
     async def async_set_user(self, mac: str, user_id: int, name: str) -> None:
         """Set a user name mapping."""
         if mac not in self._data:

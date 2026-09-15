@@ -168,6 +168,20 @@ class SwitchBotLockLastUserSensor(SwitchBotLockLogSensorBase):
         self._last_processed_timestamp: int = 0
         self._current_log: dict[str, Any] | None = None
 
+    async def async_added_to_hass(self) -> None:
+        """Restore current log from stored history so the sensor is never unknown."""
+        await super().async_added_to_hass()
+        restored = self._get_newest_valid_log() or self._newest_log()
+        if restored:
+            self._current_log = restored
+            self._last_processed_timestamp = restored.get("timestamp", 0)
+        self.async_write_ha_state()
+
+    def _newest_log(self) -> dict[str, Any] | None:
+        """Newest stored log regardless of payload (manual turns may be all-zero)."""
+        logs = self._log_manager.latest_logs or self._log_manager.history_entries
+        return max(logs, key=lambda lg: lg.get("timestamp", 0)) if logs else None
+
     @callback
     def _handle_log_update(self) -> None:
         """
@@ -177,8 +191,8 @@ class SwitchBotLockLastUserSensor(SwitchBotLockLogSensorBase):
         - Is newer than the last processed timestamp
         - Has a non-zero payload (indicating a real user action)
         """
-        new_log = self._get_newest_valid_log()
-        if new_log:
+        new_log = self._get_newest_valid_log() or self._newest_log()
+        if new_log and new_log.get("timestamp", 0) > self._last_processed_timestamp:
             self._current_log = new_log
             self._last_processed_timestamp = new_log.get("timestamp", 0)
         self.async_write_ha_state()

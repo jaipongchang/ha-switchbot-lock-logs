@@ -256,12 +256,14 @@ class SwitchBotLockLogManager:
     async def _enrich_logs(self, logs: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """Enrich raw logs with decoding, user names, corrected timestamps."""
         users = await self._user_store.async_get_users(self._mac)
+        overrides = await self._user_store.async_get_source_overrides(self._mac)
         return [
             enrich_log(
                 log,
                 model=self._model,
                 users=users,
                 clock_offset=self.effective_clock_offset,
+                source_overrides=overrides,
             )
             for log in logs
         ]
